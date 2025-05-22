@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Enhanced Chess Game</title>
+    <style>
+      :root {
+        --light-square: #eeeed2;
+        --dark-square: #769656;
+        --light-square-darktheme: #bfbfbf;
+        --dark-square-darktheme: #4a6a3c;
+      }
+      body {
+        background: #f0f0f0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 100vh;
+      }
+      h1 {
+        margin-bottom: 10px;
+        font-weight: 700;
+        color: #2c3e50;
+      }
+      #controls {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 15px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      label {
+        font-weight: 600;
+        color: #34495e;
+      }
+      select,
+      button {
+        padding: 6px 12px;
+        font-size: 1rem;
+        border-radius: 6px;
+        border: 1.5px solid #2c3e50;
+        background: white;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+      }
+      select:hover,
+      button:hover {
+        background-color: #f1c40f;
+        border-color: #d68910;
+        color: #2c3e50;
+      }
+      #status {
+        margin-bottom: 15px;
+        font-weight: 700;
+        font-size: 1.3rem;
+        color: #34495e;
+        min-height: 1.5em;
+      }
+      #chessboard {
+        display: grid;
+        grid-template-columns: repeat(8, 70px);
+        grid-template-rows: repeat(8, 70px);
+        border: 4px solid #2c3e50;
+        box-shadow: 0 0 25px #2c3e5080;
+        border-radius: 12px;
+        user-select: none;
+      }
+      .square {
+        width: 70px;
+        height: 70px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 45px;
+        cursor: pointer;
+        transition: background-color 0.25s ease, outline 0.2s ease;
+        position: relative;
+      }
+      /* Light Theme squares */
+      .light {
+        background-color: var(--light-square);
+      }
+      .dark {
+        background-color: var(--dark-square);
+      }
+      /* Dark Theme squares */
+      .dark-theme .light {
+        background-color: var(--light-square-darktheme);
+      }
+      .dark-theme .dark {
+        background-color: var(--dark-square-darktheme);
+      }
+
+      .square.selected {
+        outline: 4px solid #f39c12;
+        outline-offset: -4px;
+        box-shadow: 0 0 15px #f39c12cc;
+      }
+      .square.highlight {
+        background-color: #f1c40f !important;
+        box-shadow: 0 0 10px #f1c40fcc inset;
+      }
+
+      #footer {
+        margin-top: 20px;
+        color: #7f8c8d;
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Enhanced Chess Game</h1>
+
+    <div id="controls">
+      <label for="colorTheme">Board Color Theme:</label>
+      <select id="colorTheme" aria-label="Select board color theme">
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+
+      <label for="pieceSet">Piece Set:</label>
+      <select id="pieceSet" aria-label="Select chess piece set">
+        <option value="unicode">Unicode (Default)</option>
+        <option value="emoji">Emoji</option>
+      </select>
+
+      <button id="undoBtn" aria-label="Undo last move" disabled>
+        Undo Move ↩
+      </button>
+      <button id="resetBtn" aria-label="Reset game">Reset Game ♟️</button>
+    </div>
+
+    <div id="status" aria-live="polite" aria-atomic="true">White to move</div>
+    <div id="chessboard" role="grid" aria-label="Chessboard"></div>
+
+    <div id="footer">By Yeager & ChatGPT</div>
+
+    <script>
+      // Different piece sets
+      const pieceSets = {
+        unicode: {
+          wK: "♔",
+          wQ: "♕",
+          wR: "♖",
+          wB: "♗",
+          wN: "♘",
+          wP: "♙",
+          bK: "♚",
+          bQ: "♛",
+          bR: "♜",
+          bB: "♝",
+          bN: "♞",
+          bP: "♟",
+        },
+        emoji: {
+          wK: "🤴",
+          wQ: "👸",
+          wR: "🏰",
+          wB: "🎩",
+          wN: "🐴",
+          wP: "⚪",
+          bK: "🤴🏻",
+          bQ: "👸🏻",
+          bR: "🏯",
+          bB: "🎓",
+          bN: "🐎",
+          bP: "⚫",
+        },
+      };
+
+      // Initial board setup (8x8 array)
+      const initialBoard = [
+        ["bR", "bN", "bB", "bQ", "bK", "bB", "bN", "bR"],
+        ["bP", "bP", "bP", "bP", "bP", "bP", "bP", "bP"],
+        [null, null, null, null, null, null, null, null],
+        [null, null, null, null, null, null, null, null],
+        [null, null, null, null, null, null, null, null],
+        [null, null, null, null, null, null, null, null],
+        ["wP", "wP", "wP", "wP", "wP", "wP", "wP", "wP"],
+        ["wR", "wN", "wB", "wQ", "wK", "wB", "wN", "wR"],
+      ];
+
+      // Game state
+      let board = [];
+      let turn = "w";
+      let selectedSquare = null;
+      let possibleMoves = [];
+      let history = []; // to store move history for undo
+
+      const chessboard = document.getElementById("chessboard");
+      const status = document.getElementById("status");
+      const colorThemeSelect = document.getElementById("colorTheme");
+      const pieceSetSelect = document.getElementById("pieceSet");
+      const undoBtn = document.getElementById("undoBtn");
+      const resetBtn = document.getElementById("resetBtn");
+
+      function cloneBoard(b) {
+        return b.map((row) => row.slice());
+      }
+
+      function resetGame() {
+        board = cloneBoard(initialBoard);
+        turn = "w";
+        selectedSquare = null;
+        possibleMoves = [];
+        history = [];
+        undoBtn.disabled = true;
+        updateStatus();
+        drawBoard();
+      }
+
+      // Draw board squares and pieces
+      function drawBoard() {
+        chessboard.innerHTML = "";
+        const pieceSet = pieceSets[pieceSetSelect.value] || pieceSets.unicode;
+
+        for (let row = 0; row < 8; row++) {
+          for (let col = 0; col < 8; col++) {
+            const square = document.createElement("div");
+            square.classList.add("square");
+            square.setAttribute("role", "gridcell");
+            square.dataset.row = row;
+            square.dataset.col = col;
+            square.tabIndex = 0; // make focusable for accessibility
+
+            // Coloring squares depending on theme
+            const isLightSquare = (row + col) % 2 === 0;
+            if (document.body.classList.contains("dark-theme")) {
+              square.classList.add(isLightSquare ? "light" : "dark");
+            } else {
+              square.classList.add(isLightSquare ? "light" : "dark");
+            }
+
+            // Add piece if present
+            const piece = board[row][col];
+            if (piece) {
+              square.textContent = pieceSet[piece] || "";
+            }
+
+            chessboard.appendChild(square);
+          }
+        }
+        clearHighlights();
+      }
+
+      // Basic chess move logic as your original (without castling/en passant/check)
+      function getPossibleMoves(row, col) {
+        const moves = [];
+        const piece = board[row][col];
+        if (!piece) return moves;
+        const color = piece[0];
+        const type = piece[1];
+
+        const directions = {
+          N: [-1, 0],
+          S: [1, 0],
+          E: [0, 1],
+          W: [0, -1],
+          NE: [-1, 1],
+          NW: [-1, -1],
+          SE: [1, 1],
+          SW: [1, -1],
+        };
+
+        switch (type) {
+          case "P":
+            let dir = color === "w" ? -1 : 1;
+            // forward 1
+            if (row + dir >= 0 && row + dir < 8 && !board[row + dir][col]) {
+              moves.push([row + dir, col]);
+              // first move 2 squares
+              if (
+                (color === "w" && row === 6) ||
+                (color === "b" && row === 1)
+              ) {
+                if (!board[row + dir * 2][col]) {
+                  moves.push([row + dir * 2, col]);
+                }
+              }
+            }
+            // capture diagonally
+            for (const dc of [-1, 1]) {
+              let c = col + dc;
+              if (c >= 0 && c < 8 && row + dir >= 0 && row + dir < 8) {
+                let target = board[row + dir][c];
+                if (target && target[0] !== color) {
+                  moves.push([row + dir, c]);
+                }
+              }
+            }
+            break;
+
+          case "N":
+            const knightMoves = [
+              [-2, -1],
+              [-2, 1],
+              [-1, -2],
+              [-1, 2],
+              [1, -2],
+              [1, 2],
+              [2, -1],
+              [2, 1],
+            ];
+            for (const [dr, dc] of knightMoves) {
+              const r = row + dr,
+                c = col + dc;
+              if (r >= 0 && r < 8 && c >= 0 && c < 8) {
+                if (!board[r][c] || board[r][c][0] !== color)
+                  moves.push([r, c]);
+              }
+            }
+            break;
+
+          case "B":
+            for (const d of ["NE", "NW", "SE", "SW"]) {
+              let [dr, dc] = directions[d];
+              let r = row + dr,
+                c = col + dc;
+              while (r >= 0 && r < 8 && c >= 0 && c < 8) {
+                if (!board[r][c]) {
+                  moves.push([r, c]);
+                } else {
+                  if (board[r][c][0] !== color) moves.push([r, c]);
+                  break;
+                }
+                r += dr;
+                c += dc;
+              }
+            }
+            break;
+
+          case "R":
+            for (const d of ["N", "S", "E", "W"]) {
+              let [dr, dc] = directions[d];
+              let r = row + dr,
+                c = col + dc;
+              while (r >= 0 && r < 8 && c >= 0 && c < 8) {
+                if (!board[r][c]) {
+                  moves.push([r, c]);
+                } else {
+                  if (board[r][c][0] !== color) moves.push([r, c]);
+                  break;
+                }
+                r += dr;
+                c += dc;
+              }
+            }
+            break;
+
+          case "Q":
+            for (const d of Object.keys(directions)) {
+              let [dr, dc] = directions[d];
+              let r = row + dr,
+                c = col + dc;
+              while (r >= 0 && r < 8 && c >= 0 && c < 8) {
+                if (!board[r][c]) {
+                  moves.push([r, c]);
+                } else {
+                  if (board[r][c][0] !== color) moves.push([r, c]);
+                  break;
+                }
+                r += dr;
+                c += dc;
+              }
+            }
+            break;
+
+          case "K":
+            for (const d of Object.keys(directions)) {
+              const [dr, dc] = directions[d];
+              const r = row + dr,
+                c = col + dc;
+              if (r >= 0 && r < 8 && c >= 0 && c < 8) {
+                if (!board[r][c] || board[r][c][0] !== color)
+                  moves.push([r, c]);
+              }
+            }
+            break;
+        }
+        return moves;
+      }
+
+      // Update status text
+      function updateStatus() {
+        status.textContent = (turn === "w" ? "White" : "Black") + " to move";
+      }
+
+      // Clear highlights and selections
+      function clearHighlights() {
+        document.querySelectorAll(".square").forEach((sq) => {
+          sq.classList.remove("selected", "highlight");
+        });
+      }
+
+      // Convert row, col to chess notation (e.g., 0,0 -> a8)
+      function toChessNotation(row, col) {
+        const files = "abcdefgh";
+        return files[col] + (8 - row);
+      }
+
+      // Handle clicks on squares
+      function onSquareClick(e) {
+        const square = e.currentTarget;
+        const row = +square.dataset.row;
+        const col = +square.dataset.col;
+        const piece = board[row][col];
+
+        if (selectedSquare) {
+          // If clicked on possible move, move piece
+          if (possibleMoves.some(([r, c]) => r === row && c === col)) {
+            movePiece(selectedSquare[0], selectedSquare[1], row, col);
+            selectedSquare = null;
+            possibleMoves = [];
+            clearHighlights();
+            updateStatus();
+            undoBtn.disabled = false;
+          } else {
+            // Select another piece of current turn
+            if (piece && piece[0] === turn) {
+              selectedSquare = [row, col];
+              possibleMoves = getPossibleMoves(row, col);
+              clearHighlights();
+              highlightSquares(selectedSquare, possibleMoves);
+            } else {
+              // Clear selection if clicked invalid square
+              selectedSquare = null;
+              possibleMoves = [];
+              clearHighlights();
+            }
+          }
+        } else {
+          // No piece selected, select if belongs to current player
+          if (piece && piece[0] === turn) {
+            selectedSquare = [row, col];
+            possibleMoves = getPossibleMoves(row, col);
+            clearHighlights();
+            highlightSquares(selectedSquare, possibleMoves);
+          }
+        }
+      }
+
+      // Highlight squares: selected and possible moves
+      function highlightSquares(selected, moves) {
+        const [sr, sc] = selected;
+        const squares = chessboard.children;
+        for (let sq of squares) {
+          const r = +sq.dataset.row;
+          const c = +sq.dataset.col;
+          if (r === sr && c === sc) sq.classList.add("selected");
+          else if (moves.some(([mr, mc]) => mr === r && mc === c))
+            sq.classList.add("highlight");
+          else sq.classList.remove("selected", "highlight");
+        }
+      }
+
+      // Move piece and update board state
+      function movePiece(sr, sc, dr, dc) {
+        // Save current state for undo
+        history.push({
+          board: cloneBoard(board),
+          turn,
+        });
+        board[dr][dc] = board[sr][sc];
+        board[sr][sc] = null;
+        turn = turn === "w" ? "b" : "w";
+
+        drawBoard();
+      }
+
+      // Undo last move
+      function undoMove() {
+        if (history.length === 0) return;
+        const last = history.pop();
+        board = cloneBoard(last.board);
+        turn = last.turn;
+        selectedSquare = null;
+        possibleMoves = [];
+        updateStatus();
+        drawBoard();
+        if (history.length === 0) undoBtn.disabled = true;
+      }
+
+      // Change board theme
+      function updateTheme() {
+        if (colorThemeSelect.value === "dark") {
+          document.body.classList.add("dark-theme");
+        } else {
+          document.body.classList.remove("dark-theme");
+        }
+        drawBoard();
+      }
+
+      // Change piece set
+      function updatePieceSet() {
+        drawBoard();
+      }
+
+      // Attach events
+      function attachSquareListeners() {
+        document.querySelectorAll(".square").forEach((sq) => {
+          sq.onclick = onSquareClick;
+          sq.onkeydown = (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              sq.click();
+            }
+          };
+        });
+      }
+
+      // Initial render and listeners setup
+      resetGame();
+      attachSquareListeners();
+
+      // Redraw and reattach after drawBoard
+      const observer = new MutationObserver(() => {
+        attachSquareListeners();
+      });
+      observer.observe(chessboard, { childList: true });
+
+      // Controls event handlers
+      undoBtn.addEventListener("click", undoMove);
+      resetBtn.addEventListener("click", () => {
+        resetGame();
+        undoBtn.disabled = true;
+      });
+      colorThemeSelect.addEventListener("change", updateTheme);
+      pieceSetSelect.addEventListener("change", updatePieceSet);
+
+      // Accessibility: announce move or game state
+    </script>
+  </body>
+</html>
